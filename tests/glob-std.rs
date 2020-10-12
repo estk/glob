@@ -362,28 +362,41 @@ fn test_general() {
 
 #[test]
 #[cfg(target_family = "unix")]
-fn test_inaccessable() {
+fn test_inaccessable() -> Result<(), Box<dyn std::error::Error>> {
     use std::os::unix::fs::PermissionsExt;
     let guard = setup_cwd();
 
     // create
-    fs::create_dir_all("inaccessible/inner").unwrap();
+    fs::create_dir_all("inaccessible/inner")?;
     mk_file("inaccessible/inner/foo", false);
 
     // lock down
-    let mut perms = fs::metadata("./inaccessible").unwrap().permissions();
+    let mut perms = fs::metadata("./inaccessible")?.permissions();
     perms.set_mode(0o000);
+    fs::set_permissions("./inaccessible", perms)?;
+
+    println!("here");
 
     // glob error for inaccessible dirs
     assert_eq!(
-        glob_err_paths("./inaccessible/*"),
-        vec!["inaccessible/inner/foo".parse::<PathBuf>().unwrap(),]
+        glob_err_paths("./inaccessible/inner/foo"),
+        vec![PathBuf::from("inaccessible/inner")]
     );
     assert_eq!(
         glob_err_paths("./inaccessible/inner/*"),
-        vec!["inaccessible/inner/foo".parse::<PathBuf>().unwrap(),]
+        vec![PathBuf::from("inaccessible/inner")]
     );
-    guard.close().unwrap();
+    assert_eq!(
+        glob_err_paths("./inaccessible/*"),
+        vec![PathBuf::from("inaccessible")]
+    );
+
+    // unlock
+    let mut perms = fs::metadata("./inaccessible")?.permissions();
+    perms.set_mode(0o777);
+    fs::set_permissions("./inaccessible", perms)?;
+    guard.close()?;
+    Ok(())
 }
 
 fn mk_file(path: &str, directory: bool) {

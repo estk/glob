@@ -69,18 +69,17 @@ extern crate doc_comment;
 #[cfg(test)]
 doctest!("../README.md");
 
-use std::cmp;
-use std::error::Error;
-use std::fmt;
-use std::fs;
-use std::io;
-use std::path::{self, Component, Path, PathBuf};
-use std::str::FromStr;
+use std::{
+    cmp,
+    error::Error,
+    fmt, fs, io,
+    path::{self, Component, Path, PathBuf},
+    str::FromStr,
+};
 
 use CharSpecifier::{CharRange, SingleChar};
 use MatchResult::{EntirePatternDoesntMatch, Match, SubPatternDoesntMatch};
-use PatternToken::AnyExcept;
-use PatternToken::{AnyChar, AnyRecursiveSequence, AnySequence, AnyWithin, Char};
+use PatternToken::{AnyChar, AnyExcept, AnyRecursiveSequence, AnySequence, AnyWithin, Char};
 
 /// An iterator that yields `Path`s from the filesystem that match a particular
 /// pattern.
@@ -853,8 +852,19 @@ fn fill_todo(
             } else {
                 path.join(&s)
             };
-            if (special && is_dir) || (!special && fs::metadata(&next_path).is_ok()) {
-                add(todo, next_path);
+            if special {
+                if is_dir {
+                    add(todo, next_path);
+                }
+            } else {
+                if let Err(error) = fs::metadata(&next_path) {
+                    todo.push(Err(GlobError {
+                        path: next_path,
+                        error,
+                    }))
+                } else {
+                    add(todo, next_path);
+                }
             }
         }
         None if is_dir => {
@@ -1084,21 +1094,18 @@ mod test {
 
         #[cfg(windows)]
         fn win() {
-            use std::env::current_dir;
-            use std::path::Component;
+            use std::{env::current_dir, path::Component};
 
             // check windows absolute paths with host/device components
             let root_with_device = current_dir()
                 .ok()
-                .and_then(|p| {
-                    match p.components().next().unwrap() {
-                        Component::Prefix(prefix_component) => {
-                            let path = Path::new(prefix_component.as_os_str());
-                            path.join("*");
-                            Some(path.to_path_buf())
-                        }
-                        _ => panic!("no prefix in this path"),
+                .and_then(|p| match p.components().next().unwrap() {
+                    Component::Prefix(prefix_component) => {
+                        let path = Path::new(prefix_component.as_os_str());
+                        path.join("*");
+                        Some(path.to_path_buf())
                     }
+                    _ => panic!("no prefix in this path"),
                 })
                 .unwrap();
             // FIXME (#9639): This needs to handle non-utf8 paths
