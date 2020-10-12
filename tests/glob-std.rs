@@ -16,28 +16,12 @@ extern crate glob;
 extern crate tempdir;
 
 use glob::glob;
-use std::env;
-use std::fs;
-use std::path::PathBuf;
+use std::{env, fs, path::PathBuf};
 use tempdir::TempDir;
 
 #[test]
-fn main() {
-    fn mk_file(path: &str, directory: bool) {
-        if directory {
-            fs::create_dir(path).unwrap();
-        } else {
-            fs::File::create(path).unwrap();
-        }
-    }
-
-    fn glob_vec(pattern: &str) -> Vec<PathBuf> {
-        glob(pattern).unwrap().map(|r| r.unwrap()).collect()
-    }
-
-    let root = TempDir::new("glob-tests");
-    let root = root.ok().expect("Should have created a temp directory");
-    assert!(env::set_current_dir(root.path()).is_ok());
+fn test_general() {
+    let _guard = setup_cwd();
 
     mk_file("aaa", true);
     mk_file("aaa/apple", true);
@@ -374,4 +358,58 @@ fn main() {
             )
         );
     }
+}
+
+#[test]
+#[cfg(target_family = "unix")]
+fn test_inaccessable() {
+    use std::os::unix::fs::PermissionsExt;
+    let guard = setup_cwd();
+    let cwd = env::current_dir().unwrap().to_string_lossy().to_string();
+    println!("cwd: {}", cwd);
+    println!(
+        "ls: {:?}",
+        fs::read_dir(&cwd).unwrap().into_iter().collect::<Vec<_>>()
+    );
+    println!("meta: {:?}", fs::metadata(cwd).unwrap());
+
+    fs::create_dir_all("inaccessible/inner").unwrap();
+    mk_file("inaccessible/inner/foo", false);
+
+    let mut perms = fs::metadata("inaccessible").unwrap().permissions();
+    perms.set_mode(0o000);
+    guard.close().unwrap();
+
+    // glob error for unaccessable dirs
+    assert_eq!(
+        glob_err_paths("inaccessible/inner/*"),
+        vec!["inaccessible/inner/foo".parse::<PathBuf>().unwrap(),]
+    );
+}
+
+fn mk_file(path: &str, directory: bool) {
+    if directory {
+        fs::create_dir(path).unwrap();
+    } else {
+        fs::File::create(path).unwrap();
+    }
+}
+
+fn glob_vec(pattern: &str) -> Vec<PathBuf> {
+    glob(pattern).unwrap().map(|r| r.unwrap()).collect()
+}
+
+fn glob_err_paths(pattern: &str) -> Vec<PathBuf> {
+    println!("glob {:?}", glob(pattern).unwrap().collect::<Vec<_>>());
+    glob(pattern)
+        .unwrap()
+        .filter_map(|r| r.err().map(|e| e.path().to_path_buf()))
+        .collect()
+}
+
+fn setup_cwd() -> TempDir {
+    let root = TempDir::new("glob-tests");
+    let root = root.ok().expect("Should have created a temp directory");
+    assert!(env::set_current_dir(root.path()).is_ok());
+    root
 }
