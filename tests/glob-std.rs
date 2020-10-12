@@ -365,26 +365,25 @@ fn test_general() {
 fn test_inaccessable() {
     use std::os::unix::fs::PermissionsExt;
     let guard = setup_cwd();
-    let cwd = env::current_dir().unwrap().to_string_lossy().to_string();
-    println!("cwd: {}", cwd);
-    println!(
-        "ls: {:?}",
-        fs::read_dir(&cwd).unwrap().into_iter().collect::<Vec<_>>()
-    );
-    println!("meta: {:?}", fs::metadata(cwd).unwrap());
 
+    // create
     fs::create_dir_all("inaccessible/inner").unwrap();
     mk_file("inaccessible/inner/foo", false);
 
-    let mut perms = fs::metadata("inaccessible").unwrap().permissions();
+    // lock down
+    let mut perms = fs::metadata("./inaccessible").unwrap().permissions();
     perms.set_mode(0o000);
-    guard.close().unwrap();
 
-    // glob error for unaccessable dirs
+    // glob error for inaccessible dirs
     assert_eq!(
-        glob_err_paths("inaccessible/inner/*"),
+        glob_err_paths("./inaccessible/*"),
         vec!["inaccessible/inner/foo".parse::<PathBuf>().unwrap(),]
     );
+    assert_eq!(
+        glob_err_paths("./inaccessible/inner/*"),
+        vec!["inaccessible/inner/foo".parse::<PathBuf>().unwrap(),]
+    );
+    guard.close().unwrap();
 }
 
 fn mk_file(path: &str, directory: bool) {
@@ -400,7 +399,6 @@ fn glob_vec(pattern: &str) -> Vec<PathBuf> {
 }
 
 fn glob_err_paths(pattern: &str) -> Vec<PathBuf> {
-    println!("glob {:?}", glob(pattern).unwrap().collect::<Vec<_>>());
     glob(pattern)
         .unwrap()
         .filter_map(|r| r.err().map(|e| e.path().to_path_buf()))
