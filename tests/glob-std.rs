@@ -13,15 +13,16 @@
 #![cfg_attr(test, deny(warnings))]
 
 extern crate glob;
-extern crate tempdir;
+extern crate tempfile;
 
 use glob::glob;
 use std::{env, fs, path::PathBuf};
-use tempdir::TempDir;
+use tempfile::TempDir;
 
 #[test]
-fn test_general() {
-    let _guard = setup_cwd();
+fn test_main() {
+    let guard = setup_cwd();
+    println!("general tmpdir: {:?}", guard.path());
 
     mk_file("aaa", true);
     mk_file("aaa/apple", true);
@@ -358,22 +359,16 @@ fn test_general() {
             )
         );
     }
-}
-
-#[test]
-#[cfg(target_family = "unix")]
-fn test_inaccessable() -> Result<(), Box<dyn std::error::Error>> {
     use std::os::unix::fs::PermissionsExt;
-    let guard = setup_cwd();
 
     // create
-    fs::create_dir_all("inaccessible/inner")?;
+    fs::create_dir_all("inaccessible/inner").unwrap();
     mk_file("inaccessible/inner/foo", false);
 
     // lock down
-    let mut perms = fs::metadata("./inaccessible")?.permissions();
+    let mut perms = fs::metadata("./inaccessible").unwrap().permissions();
     perms.set_mode(0o000);
-    fs::set_permissions("./inaccessible", perms)?;
+    fs::set_permissions("./inaccessible", perms).unwrap();
 
     println!("here");
 
@@ -392,16 +387,15 @@ fn test_inaccessable() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // unlock
-    let mut perms = fs::metadata("./inaccessible")?.permissions();
+    let mut perms = fs::metadata("./inaccessible").unwrap().permissions();
     perms.set_mode(0o777);
-    fs::set_permissions("./inaccessible", perms)?;
-    guard.close()?;
-    Ok(())
+    fs::set_permissions("./inaccessible", perms).unwrap();
+    guard.close().unwrap();
 }
 
 fn mk_file(path: &str, directory: bool) {
     if directory {
-        fs::create_dir(path).unwrap();
+        fs::create_dir(path).expect(&format!("unable to create dir: {}", path));
     } else {
         fs::File::create(path).unwrap();
     }
@@ -412,14 +406,17 @@ fn glob_vec(pattern: &str) -> Vec<PathBuf> {
 }
 
 fn glob_err_paths(pattern: &str) -> Vec<PathBuf> {
-    glob(pattern)
+    let mut opts = glob::MatchOptions::default();
+    opts.strict = true;
+
+    glob::glob_with(pattern, opts)
         .unwrap()
         .filter_map(|r| r.err().map(|e| e.path().to_path_buf()))
         .collect()
 }
 
 fn setup_cwd() -> TempDir {
-    let root = TempDir::new("glob-tests");
+    let root = TempDir::new();
     let root = root.ok().expect("Should have created a temp directory");
     assert!(env::set_current_dir(root.path()).is_ok());
     root

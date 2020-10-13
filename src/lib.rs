@@ -47,6 +47,7 @@
 //!     case_sensitive: false,
 //!     require_literal_separator: false,
 //!     require_literal_leading_dot: false,
+//!     strict: false,
 //! };
 //! for entry in glob_with("local/*a*", options).unwrap() {
 //!     if let Ok(path) = entry {
@@ -858,10 +859,12 @@ fn fill_todo(
                 }
             } else {
                 if let Err(error) = fs::metadata(&next_path) {
-                    todo.push(Err(GlobError {
-                        path: next_path,
-                        error,
-                    }))
+                    if options.strict {
+                        todo.push(Err(GlobError {
+                            path: next_path,
+                            error,
+                        }))
+                    }
                 } else {
                     add(todo, next_path);
                 }
@@ -997,6 +1000,10 @@ pub struct MatchOptions {
     /// conventionally considered hidden on Unix systems and it might be
     /// desirable to skip them when listing files.
     pub require_literal_leading_dot: bool,
+
+    /// Whether or not an error should be returned on missing or inaccessible
+    /// paths contained in the pattern.
+    pub strict: bool,
 }
 
 impl MatchOptions {
@@ -1018,6 +1025,7 @@ impl MatchOptions {
             case_sensitive: true,
             require_literal_separator: false,
             require_literal_leading_dot: false,
+            strict: false,
         }
     }
 }
@@ -1272,6 +1280,7 @@ mod test {
             case_sensitive: false,
             require_literal_separator: false,
             require_literal_leading_dot: false,
+            strict: false,
         };
 
         assert!(pat.matches_with("aBcDeFg", options));
@@ -1289,11 +1298,13 @@ mod test {
             case_sensitive: false,
             require_literal_separator: false,
             require_literal_leading_dot: false,
+            strict: false,
         };
         let options_case_sensitive = MatchOptions {
             case_sensitive: true,
             require_literal_separator: false,
             require_literal_leading_dot: false,
+            strict: false,
         };
 
         assert!(pat_within.matches_with("a", options_case_insensitive));
@@ -1311,11 +1322,13 @@ mod test {
             case_sensitive: true,
             require_literal_separator: true,
             require_literal_leading_dot: false,
+            strict: false,
         };
         let options_not_require_literal = MatchOptions {
             case_sensitive: true,
             require_literal_separator: false,
             require_literal_leading_dot: false,
+            strict: false,
         };
 
         assert!(Pattern::new("abc/def")
@@ -1351,11 +1364,13 @@ mod test {
             case_sensitive: true,
             require_literal_separator: false,
             require_literal_leading_dot: true,
+            strict: false,
         };
         let options_not_require_literal_leading_dot = MatchOptions {
             case_sensitive: true,
             require_literal_separator: false,
             require_literal_leading_dot: false,
+            strict: false,
         };
 
         let f = |options| {
